@@ -1,7 +1,16 @@
 from playwright.sync_api import sync_playwright
 from datetime import datetime
+from zoneinfo import ZoneInfo
 import os
 import time
+
+
+# ------------------------------------------------
+# TÜRKİYE SAATİ
+# ------------------------------------------------
+
+def get_today_tr():
+    return datetime.now(ZoneInfo("Europe/Istanbul"))
 
 
 # ------------------------------------------------
@@ -38,15 +47,15 @@ def update_today_price(page, url, file_name):
     price_selector = 'div[data-test="instrument-price-last"]'
     price_text = None
 
-    # 🔥 Retry Mekanizması
+    # Retry (2 deneme)
     for attempt in range(2):
         try:
             page.goto(url, wait_until="domcontentloaded", timeout=90000)
-            page.wait_for_selector(price_selector, timeout=45000)
+            page.wait_for_selector(price_selector, timeout=60000)
             price_text = page.locator(price_selector).first.inner_text()
             break
-        except Exception as e:
-            print(f"⏳ Deneme {attempt+1} başarısız. Tekrar deneniyor...")
+        except:
+            print(f"⏳ Deneme {attempt+1} başarısız, tekrar deneniyor...")
             time.sleep(5)
 
     if not price_text:
@@ -56,8 +65,8 @@ def update_today_price(page, url, file_name):
     numeric_price = clean_price(price_text)
     live_price = f"{numeric_price:.4f}"
 
-    today = datetime.now()
-    today_str = f"{today.month}/{today.day}/{today.year}"
+    today = get_today_tr()
+    today_str = today.strftime("%m/%d/%Y")
 
     data_dict = {}
 
@@ -101,7 +110,7 @@ markets = [
 
 if __name__ == "__main__":
 
-    start_time = datetime.now()
+    start_time = get_today_tr()
     print(f"🚀 Investing Güncelleme Başladı: {start_time.strftime('%H:%M:%S')}")
 
     with sync_playwright() as p:
@@ -114,7 +123,7 @@ if __name__ == "__main__":
         )
 
         context = browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
             viewport={"width": 1280, "height": 800},
             locale="tr-TR"
         )
@@ -124,17 +133,17 @@ if __name__ == "__main__":
         # Görselleri kapat (hız + block azaltma)
         page.route("**/*.{png,jpg,jpeg,gif,webp,svg}", lambda route: route.abort())
 
-        # 🔥 SITEYI ISIT
+        # Siteyi ısıt
         print("🌍 Investing ana sayfa açılıyor...")
         page.goto("https://www.investing.com", timeout=60000)
         time.sleep(4)
 
-        # Marketleri işle
         for url, file_name in markets:
             update_today_price(page, url, file_name)
             time.sleep(3)
 
         browser.close()
 
-    end_time = datetime.now()
+    end_time = get_today_tr()
     print(f"\n✨ İşlem tamamlandı. Süre: {end_time - start_time}")
+

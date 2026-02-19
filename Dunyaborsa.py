@@ -1,10 +1,13 @@
 import requests
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 import os
+
+TR_TZ = ZoneInfo("Europe/Istanbul")
 
 
 def get_last_3_business_days():
-    today = datetime.utcnow()
+    today = datetime.now(TR_TZ)
     days = []
 
     current = today
@@ -39,7 +42,8 @@ def fetch_yahoo_close(symbol):
 
         for ts, close in zip(timestamps, closes):
             if close is not None:
-                date = datetime.utcfromtimestamp(ts)
+                # 🔥 Timestamp'i Türkiye saatine çevir
+                date = datetime.fromtimestamp(ts, TR_TZ)
                 date_str = date.strftime("%m/%d/%Y")
                 price_dict[date_str] = f"{close:.4f}"
 
@@ -100,12 +104,13 @@ markets = [
 
 if __name__ == "__main__":
 
-    start_time = datetime.now()
+    start_time = datetime.now(TR_TZ)
     print(f"🚀 Yahoo Güncelleme Başladı: {start_time.strftime('%H:%M:%S')}")
 
     for file_path, symbol in markets:
         update_index(file_path, symbol)
 
-    end_time = datetime.now()
+    end_time = datetime.now(TR_TZ)
     print(f"\n✨ Tüm işlemler tamamlandı. Süre: {end_time - start_time}")
+
 

@@ -38,6 +38,15 @@ def clean_price(text):
 
 
 # ------------------------------------------------
+# TARİH STRING -> DATETIME (2/9/2026 format destekli)
+# ------------------------------------------------
+
+def parse_date(date_str):
+    month, day, year = date_str.split("/")
+    return datetime(int(year), int(month), int(day))
+
+
+# ------------------------------------------------
 # FİYAT GÜNCELLEME
 # ------------------------------------------------
 
@@ -66,7 +75,7 @@ def update_today_price(page, url, file_name):
     live_price = f"{numeric_price:.4f}"
 
     today = get_today_tr()
-    today_str = today.strftime("%m/%d/%Y")
+    today_str = f"{today.month}/{today.day}/{today.year}"   # <-- BAŞTA SIFIR YOK
 
     data_dict = {}
 
@@ -77,13 +86,13 @@ def update_today_price(page, url, file_name):
                 if len(parts) >= 2:
                     data_dict[parts[0]] = parts[1]
 
+    # Bugünün fiyatını ekle / güncelle
     data_dict[today_str] = live_price
 
-    sorted_dates = sorted(
-        data_dict.keys(),
-        key=lambda d: datetime.strptime(d, "%m/%d/%Y")
-    )
+    # Tarihe göre sırala
+    sorted_dates = sorted(data_dict.keys(), key=parse_date)
 
+    # Dosyaya yaz
     with open(file_name, "w", encoding="utf-8") as f:
         for d in sorted_dates:
             f.write(f"{d}\t{data_dict[d]}\n")
@@ -146,4 +155,5 @@ if __name__ == "__main__":
 
     end_time = get_today_tr()
     print(f"\n✨ İşlem tamamlandı. Süre: {end_time - start_time}")
+
 

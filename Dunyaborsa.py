@@ -3,8 +3,18 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 import os
 
+# ------------------------------------------------
+# ZAMAN DİLİMİ
+# ------------------------------------------------
+
 TR_TZ = ZoneInfo("Europe/Istanbul")
 
+US_INDEXES = ["^DJI", "^GSPC"]
+
+
+# ------------------------------------------------
+# SON 3 İŞ GÜNÜ (TR saatine göre)
+# ------------------------------------------------
 
 def get_last_3_business_days():
     today = datetime.now(TR_TZ)
@@ -19,7 +29,12 @@ def get_last_3_business_days():
     return days
 
 
+# ------------------------------------------------
+# YAHOO VERİ ÇEKME
+# ------------------------------------------------
+
 def fetch_yahoo_close(symbol):
+
     url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?range=7d&interval=1d"
 
     headers = {
@@ -41,17 +56,28 @@ def fetch_yahoo_close(symbol):
         price_dict = {}
 
         for ts, close in zip(timestamps, closes):
-            if close is not None:
-                # 🔥 Timestamp'i Türkiye saatine çevir
-                date = datetime.fromtimestamp(ts, TR_TZ)
-                date_str = date.strftime("%m/%d/%Y")
-                price_dict[date_str] = f"{close:.4f}"
+
+            if close is None:
+                continue
+
+            date = datetime.fromtimestamp(ts, TR_TZ)
+
+            # 🔥 ABD endeksleri için 1 gün ileri kayma düzeltmesi
+            if symbol in US_INDEXES and date.hour < 3:
+                date -= timedelta(days=1)
+
+            date_str = date.strftime("%m/%d/%Y")
+            price_dict[date_str] = f"{close:.4f}"
 
         return price_dict
 
     except:
         return None
 
+
+# ------------------------------------------------
+# DOSYA GÜNCELLEME
+# ------------------------------------------------
 
 def update_index(FILE_PATH, SYMBOL):
 
@@ -76,6 +102,7 @@ def update_index(FILE_PATH, SYMBOL):
 
     for day in target_days:
         date_str = day.strftime("%m/%d/%Y")
+
         if date_str in yahoo_data:
             data_dict[date_str] = yahoo_data[date_str]
             print(f"✅ {date_str}: {yahoo_data[date_str]}")
@@ -89,8 +116,12 @@ def update_index(FILE_PATH, SYMBOL):
         for d in sorted_dates:
             f.write(f"{d}\t{data_dict[d]}\n")
 
-    print(f"📁 {FILE_PATH} güncellendi.")
+    print(f"📁 {FILE_PATH} güncellendi. Toplam kayıt: {len(data_dict)}")
 
+
+# ------------------------------------------------
+# MARKET LİSTESİ
+# ------------------------------------------------
 
 markets = [
     ("data2_BIST100.txt", "XU100.IS"),
@@ -102,6 +133,10 @@ markets = [
 ]
 
 
+# ------------------------------------------------
+# ANA ÇALIŞTIRMA
+# ------------------------------------------------
+
 if __name__ == "__main__":
 
     start_time = datetime.now(TR_TZ)
@@ -111,6 +146,6 @@ if __name__ == "__main__":
         update_index(file_path, symbol)
 
     end_time = datetime.now(TR_TZ)
-    print(f"\n✨ Tüm işlemler tamamlandı. Süre: {end_time - start_time}")
 
+    print(f"\n✨ Tüm işlemler tamamlandı. Süre: {end_time - start_time}")
 

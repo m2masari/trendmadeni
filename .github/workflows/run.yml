@@ -1,5 +1,8 @@
 name: Market Data Update
 
+permissions:
+  contents: write
+  
 on:
   schedule:
     # Saat başı (Türkiye saati 00:00–23:00)

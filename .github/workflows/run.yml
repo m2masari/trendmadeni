@@ -23,10 +23,10 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
-          playwright install --with-deps
+     - name: Install dependencies
+       run: |
+         pip install -r requirements.txt
+         python -m playwright install chromium
 
       - name: Run Investing Script
         run: python Dunyaborsa.py

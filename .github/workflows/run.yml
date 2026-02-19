@@ -31,10 +31,10 @@ jobs:
           pip install -r requirements.txt
           python -m playwright install chromium
 
-      - name: Run Investing Script
+      - name: Run Borsa Script
         run: python Dunyaborsa.py
 
-      - name: Run Yahoo Script
+      - name: Run Emtia Script
         run: python Emtia.py
 
       - name: Commit and Push Changes

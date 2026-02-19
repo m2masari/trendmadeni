@@ -4,16 +4,14 @@ from zoneinfo import ZoneInfo
 import os
 
 # ------------------------------------------------
-# ZAMAN DİLİMİ
+# ZAMAN DİLİMİ (Türkiye)
 # ------------------------------------------------
 
 TR_TZ = ZoneInfo("Europe/Istanbul")
 
-US_INDEXES = ["^DJI", "^GSPC"]
-
 
 # ------------------------------------------------
-# SON 3 İŞ GÜNÜ (TR saatine göre)
+# SON 3 İŞ GÜNÜ
 # ------------------------------------------------
 
 def get_last_3_business_days():
@@ -60,13 +58,12 @@ def fetch_yahoo_close(symbol):
             if close is None:
                 continue
 
+            # 🔥 Timestamp → Türkiye saatine çevir
             date = datetime.fromtimestamp(ts, TR_TZ)
 
-            # 🔥 ABD endeksleri için 1 gün ileri kayma düzeltmesi
-            if symbol in US_INDEXES and date.hour < 3:
-                date -= timedelta(days=1)
+            # Ay ve gün başında 0 olmasın
+            date_str = f"{date.month}/{date.day}/{date.year}"
 
-            date_str = date.strftime("%m/%d/%Y")
             price_dict[date_str] = f"{close:.4f}"
 
         return price_dict
@@ -101,12 +98,14 @@ def update_index(FILE_PATH, SYMBOL):
     target_days = get_last_3_business_days()
 
     for day in target_days:
-        date_str = day.strftime("%m/%d/%Y")
+
+        date_str = f"{day.month}/{day.day}/{day.year}"
 
         if date_str in yahoo_data:
             data_dict[date_str] = yahoo_data[date_str]
             print(f"✅ {date_str}: {yahoo_data[date_str]}")
 
+    # Tarihe göre sırala
     sorted_dates = sorted(
         data_dict.keys(),
         key=lambda d: datetime.strptime(d, "%m/%d/%Y")
@@ -148,4 +147,3 @@ if __name__ == "__main__":
     end_time = datetime.now(TR_TZ)
 
     print(f"\n✨ Tüm işlemler tamamlandı. Süre: {end_time - start_time}")
-

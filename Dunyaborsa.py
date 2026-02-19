@@ -1,39 +1,12 @@
-import yfinance as yf
+import requests
 from datetime import datetime, timedelta
 import os
 
-# ------------------------------------------------
-# TARİH YARDIMCI FONKSİYONLAR
-# ------------------------------------------------
-
-def get_last_business_day(date):
-    # Pazartesi -> Cuma
-    if date.weekday() == 0:
-        return date - timedelta(days=3)
-    # Pazar -> Cuma
-    if date.weekday() == 6:
-        return date - timedelta(days=2)
-    # Cumartesi -> Cuma
-    if date.weekday() == 5:
-        return date - timedelta(days=1)
-    return date - timedelta(days=1)
-
 
 def get_last_3_business_days():
-    today = datetime.now()
+    today = datetime.utcnow()
     days = []
 
-    # Cumartesi ise sadece Cuma
-    if today.weekday() == 5:
-        friday = get_last_business_day(today)
-        return [friday]
-
-    # Pazar ise sadece Cuma
-    if today.weekday() == 6:
-        friday = get_last_business_day(today)
-        return [friday]
-
-    # Normal gün → son 3 iş günü
     current = today
     while len(days) < 3:
         if current.weekday() < 5:
@@ -43,72 +16,77 @@ def get_last_3_business_days():
     return days
 
 
-# ------------------------------------------------
-# ANA FONKSİYON
-# ------------------------------------------------
+def fetch_yahoo_close(symbol):
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?range=7d&interval=1d"
+
+    headers = {
+        "User-Agent": "Mozilla/5.0"
+    }
+
+    r = requests.get(url, headers=headers, timeout=30)
+
+    if r.status_code != 200:
+        return None
+
+    data = r.json()
+
+    try:
+        result = data["chart"]["result"][0]
+        timestamps = result["timestamp"]
+        closes = result["indicators"]["quote"][0]["close"]
+
+        price_dict = {}
+
+        for ts, close in zip(timestamps, closes):
+            if close is not None:
+                date = datetime.utcfromtimestamp(ts)
+                date_str = date.strftime("%m/%d/%Y")
+                price_dict[date_str] = f"{close:.4f}"
+
+        return price_dict
+
+    except:
+        return None
+
 
 def update_index(FILE_PATH, SYMBOL):
 
     print(f"\n🔍 İşleniyor: {SYMBOL}")
 
-    try:
-        ticker = yf.Ticker(SYMBOL)
+    yahoo_data = fetch_yahoo_close(SYMBOL)
 
-        # Son 7 günü çekiyoruz (içinden 3 iş günü alacağız)
-        hist = ticker.history(period="7d")
+    if not yahoo_data:
+        print("❌ Veri alınamadı.")
+        return
 
-        if hist.empty:
-            print("❌ Veri bulunamadı.")
-            return
+    data_dict = {}
 
-        # TXT içeriğini sözlüğe al
-        data_dict = {}
-        if os.path.exists(FILE_PATH):
-            with open(FILE_PATH, "r", encoding="utf-8") as f:
-                for line in f:
-                    parts = line.strip().split()
-                    if len(parts) >= 2:
-                        data_dict[parts[0]] = parts[1]
+    if os.path.exists(FILE_PATH):
+        with open(FILE_PATH, "r", encoding="utf-8") as f:
+            for line in f:
+                parts = line.strip().split()
+                if len(parts) >= 2:
+                    data_dict[parts[0]] = parts[1]
 
-        target_days = get_last_3_business_days()
-        updated_info = []
+    target_days = get_last_3_business_days()
 
-        for day in target_days:
+    for day in target_days:
+        date_str = day.strftime("%m/%d/%Y")
+        if date_str in yahoo_data:
+            data_dict[date_str] = yahoo_data[date_str]
+            print(f"✅ {date_str}: {yahoo_data[date_str]}")
 
-            date_str = f"{day.month}/{day.day}/{day.year}"
+    sorted_dates = sorted(
+        data_dict.keys(),
+        key=lambda d: datetime.strptime(d, "%m/%d/%Y")
+    )
 
-            # Yahoo tarih formatı
-            yahoo_date = day.strftime("%Y-%m-%d")
+    with open(FILE_PATH, "w", encoding="utf-8") as f:
+        for d in sorted_dates:
+            f.write(f"{d}\t{data_dict[d]}\n")
 
-            if yahoo_date in hist.index.strftime("%Y-%m-%d"):
-                close_price = hist.loc[yahoo_date]["Close"]
-                price_str = f"{close_price:.4f}"
+    print(f"📁 {FILE_PATH} güncellendi.")
 
-                data_dict[date_str] = price_str
-                updated_info.append(f"📅 {date_str}: {price_str}")
-
-        # Tarihe göre sırala
-        sorted_dates = sorted(
-            data_dict.keys(),
-            key=lambda d: datetime.strptime(d, "%m/%d/%Y")
-        )
-
-        with open(FILE_PATH, "w", encoding="utf-8") as f:
-            for d in sorted_dates:
-                f.write(f"{d}\t{data_dict[d]}\n")
-
-        for info in updated_info:
-            print(f"✅ {info}")
-
-        print(f"📁 {FILE_PATH} güncellendi. Toplam kayıt: {len(data_dict)}")
-
-    except Exception as e:
-        print(f"❌ Hata: {str(e)}")
-
-
-# ------------------------------------------------
-# MARKET LİSTESİ
-# ------------------------------------------------
 
 markets = [
     ("data2_BIST100.txt", "XU100.IS"),
@@ -120,10 +98,6 @@ markets = [
 ]
 
 
-# ------------------------------------------------
-# ÇALIŞTIR
-# ------------------------------------------------
-
 if __name__ == "__main__":
 
     start_time = datetime.now()
@@ -134,3 +108,4 @@ if __name__ == "__main__":
 
     end_time = datetime.now()
     print(f"\n✨ Tüm işlemler tamamlandı. Süre: {end_time - start_time}")
+

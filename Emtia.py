@@ -4,6 +4,10 @@ import os
 import time
 
 
+# ------------------------------------------------
+# FİYAT TEMİZLEME
+# ------------------------------------------------
+
 def clean_price(text):
     if not text:
         return 0.0
@@ -24,19 +28,29 @@ def clean_price(text):
         return 0.0
 
 
+# ------------------------------------------------
+# FİYAT GÜNCELLEME
+# ------------------------------------------------
+
 def update_today_price(page, url, file_name):
     print(f"\n🔍 İşleniyor: {url}")
 
-    try:
-        page.goto(url, wait_until="domcontentloaded", timeout=90000)
+    price_selector = 'div[data-test="instrument-price-last"]'
+    price_text = None
 
-        price_selector = 'div[data-test="instrument-price-last"]'
-        page.wait_for_selector(price_selector, timeout=45000)
+    # 🔥 Retry Mekanizması
+    for attempt in range(2):
+        try:
+            page.goto(url, wait_until="domcontentloaded", timeout=90000)
+            page.wait_for_selector(price_selector, timeout=45000)
+            price_text = page.locator(price_selector).first.inner_text()
+            break
+        except Exception as e:
+            print(f"⏳ Deneme {attempt+1} başarısız. Tekrar deneniyor...")
+            time.sleep(5)
 
-        price_text = page.locator(price_selector).first.inner_text()
-
-    except Exception as e:
-        print(f"❌ {file_name} için hata: {e}")
+    if not price_text:
+        print(f"❌ {file_name} için veri alınamadı.")
         return
 
     numeric_price = clean_price(price_text)
@@ -68,6 +82,10 @@ def update_today_price(page, url, file_name):
     print(f"✅ {file_name} → {today_str} = {live_price}")
 
 
+# ------------------------------------------------
+# MARKET LİSTESİ
+# ------------------------------------------------
+
 markets = [
     ("https://www.investing.com/currencies/gau-try?lang=tr", "data1_altin.txt"),
     ("https://www.investing.com/currencies/usd-try?lang=tr", "data3_dolar.txt"),
@@ -77,13 +95,22 @@ markets = [
 ]
 
 
+# ------------------------------------------------
+# ANA ÇALIŞTIRMA
+# ------------------------------------------------
+
 if __name__ == "__main__":
+
     start_time = datetime.now()
+    print(f"🚀 Investing Güncelleme Başladı: {start_time.strftime('%H:%M:%S')}")
 
     with sync_playwright() as p:
         browser = p.chromium.launch(
             headless=True,
-            args=["--no-sandbox", "--disable-blink-features=AutomationControlled"]
+            args=[
+                "--no-sandbox",
+                "--disable-blink-features=AutomationControlled"
+            ]
         )
 
         context = browser.new_context(
@@ -94,13 +121,20 @@ if __name__ == "__main__":
 
         page = context.new_page()
 
-        # Görselleri engelle (hız + block azaltma)
+        # Görselleri kapat (hız + block azaltma)
         page.route("**/*.{png,jpg,jpeg,gif,webp,svg}", lambda route: route.abort())
 
+        # 🔥 SITEYI ISIT
+        print("🌍 Investing ana sayfa açılıyor...")
+        page.goto("https://www.investing.com", timeout=60000)
+        time.sleep(4)
+
+        # Marketleri işle
         for url, file_name in markets:
             update_today_price(page, url, file_name)
             time.sleep(3)
 
         browser.close()
 
-    print("\n✨ İşlem tamamlandı.")
+    end_time = datetime.now()
+    print(f"\n✨ İşlem tamamlandı. Süre: {end_time - start_time}")

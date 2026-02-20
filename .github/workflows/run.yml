@@ -5,9 +5,6 @@ permissions:
   
 on:
   schedule:
-    # Saat başı (Türkiye saati 00:00–23:00)
-    - cron: '0 21-23,0-20 * * *'
-
     # Ekstra 23:50 Türkiye
     - cron: '50 20 * * *'
 

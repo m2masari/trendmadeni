@@ -1,114 +1,131 @@
 import yfinance as yf
 from datetime import datetime, timedelta
 import os
-import pandas as pd
-from datetime import datetime, timedelta
-import os
+import time
+import random
 from ftplib import FTP
 
+# ------------------------------------------------
+# FTP CONFIG
+# ------------------------------------------------
+
+FTP_HOST = "92.205.148.23"
+FTP_USER = "testftp@trendmadeni.com"
+FTP_PASS = "9Nes1948..?"
+FTP_PATH = ""
 
 # ------------------------------------------------
-# TARİH YARDIMCI FONKSİYONLAR
+# TARİH FONKSİYONLARI
 # ------------------------------------------------
 
-def get_last_business_day(date):
-    # Pazartesi -> Cuma
-    if date.weekday() == 0:
-        return date - timedelta(days=3)
-    # Pazar -> Cuma
-    if date.weekday() == 6:
-        return date - timedelta(days=2)
-    # Cumartesi -> Cuma
-    if date.weekday() == 5:
-        return date - timedelta(days=1)
-    return date - timedelta(days=1)
-
-
-def get_last_3_business_days():
-    today = datetime.now()
+def get_last_business_days(n=3):
     days = []
+    current = datetime.now()
 
-    # Cumartesi veya Pazar → Perşembe + Cuma
-    if today.weekday() in [5, 6]:
-        friday = get_last_business_day(today)
-        thursday = get_last_business_day(friday)
-        return [thursday, friday]
-
-    # Normal gün → son 3 iş günü
-    current = today
-    while len(days) < 3:
+    while len(days) < n:
         if current.weekday() < 5:
             days.append(current)
         current -= timedelta(days=1)
 
     return days
 
+# ------------------------------------------------
+# SAFE YAHOO DOWNLOAD
+# ------------------------------------------------
+
+def safe_history(symbol, retries=3):
+    for i in range(retries):
+        try:
+            ticker = yf.Ticker(symbol)
+            data = ticker.history(period="7d")
+
+            if data is not None and not data.empty:
+                return data
+
+        except Exception as e:
+            print(f"⚠️ {symbol} retry {i+1}: {e}")
+            time.sleep(2 + i)
+
+    return None
 
 # ------------------------------------------------
-# ANA FONKSİYON
+# FILE UPDATE
 # ------------------------------------------------
 
 def update_index(FILE_PATH, SYMBOL):
 
     print(f"\n🔍 İşleniyor: {SYMBOL}")
 
-    try:
-        ticker = yf.Ticker(SYMBOL)
+    hist = safe_history(SYMBOL)
 
-        # Son 7 günü çekiyoruz (içinden 3 iş günü alacağız)
-        hist = ticker.history(period="7d")
+    if hist is None:
+        print(f"❌ {SYMBOL} veri alınamadı.")
+        return
 
-        if hist.empty:
-            print("❌ Veri bulunamadı.")
-            return
+    data_dict = {}
 
-        # TXT içeriğini sözlüğe al
-        data_dict = {}
-        if os.path.exists(FILE_PATH):
-            with open(FILE_PATH, "r", encoding="utf-8") as f:
-                for line in f:
-                    parts = line.strip().split()
-                    if len(parts) >= 2:
-                        data_dict[parts[0]] = parts[1]
+    if os.path.exists(FILE_PATH):
+        with open(FILE_PATH, "r", encoding="utf-8") as f:
+            for line in f:
+                parts = line.strip().split()
+                if len(parts) >= 2:
+                    data_dict[parts[0]] = parts[1]
 
-        target_days = get_last_3_business_days()
-        updated_info = []
+    target_days = get_last_business_days(3)
+    updated = []
 
-        for day in target_days:
+    hist.index = hist.index.strftime("%Y-%m-%d")
 
-            date_str = f"{day.month}/{day.day}/{day.year}"
+    for day in target_days:
+        date_str = f"{day.month}/{day.day}/{day.year}"
+        yahoo_date = day.strftime("%Y-%m-%d")
 
-            # Yahoo tarih formatı
-            yahoo_date = day.strftime("%Y-%m-%d")
+        if yahoo_date in hist.index:
+            close_price = hist.loc[yahoo_date]["Close"]
+            price_str = f"{close_price:.4f}"
 
-            if yahoo_date in hist.index.strftime("%Y-%m-%d"):
-                close_price = hist.loc[yahoo_date]["Close"]
-                price_str = f"{close_price:.4f}"
+            data_dict[date_str] = price_str
+            updated.append(f"{date_str} -> {price_str}")
 
-                data_dict[date_str] = price_str
-                updated_info.append(f"📅 {date_str}: {price_str}")
+    sorted_dates = sorted(
+        data_dict.keys(),
+        key=lambda x: datetime.strptime(x, "%m/%d/%Y")
+    )
 
-        # Tarihe göre sırala
-        sorted_dates = sorted(
-            data_dict.keys(),
-            key=lambda d: datetime.strptime(d, "%m/%d/%Y")
-        )
+    with open(FILE_PATH, "w", encoding="utf-8") as f:
+        for d in sorted_dates:
+            f.write(f"{d}\t{data_dict[d]}\n")
 
-        with open(FILE_PATH, "w", encoding="utf-8") as f:
-            for d in sorted_dates:
-                f.write(f"{d}\t{data_dict[d]}\n")
+    for u in updated:
+        print("✅", u)
 
-        for info in updated_info:
-            print(f"✅ {info}")
-
-        print(f"📁 {FILE_PATH} güncellendi. Toplam kayıt: {len(data_dict)}")
-
-    except Exception as e:
-        print(f"❌ Hata: {str(e)}")
-
+    print(f"📁 {FILE_PATH} güncellendi")
 
 # ------------------------------------------------
-# MARKET LİSTESİ
+# FTP UPLOAD
+# ------------------------------------------------
+
+def upload_to_ftp(file_name):
+
+    try:
+        with FTP() as ftp:
+            ftp.connect(FTP_HOST, 21, timeout=30)
+            ftp.login(FTP_USER, FTP_PASS)
+            ftp.set_pasv(True)
+
+            if FTP_PATH:
+                ftp.cwd(FTP_PATH)
+
+            with open(file_name, "rb") as f:
+                ftp.storbinary(f"STOR {file_name}", f)
+
+            print(f"🚀 Upload OK: {file_name}")
+
+    except Exception as e:
+        print(f"❌ FTP error {file_name}: {e}")
+
+# ------------------------------------------------
+# MARKET LIST
 # ------------------------------------------------
 
 markets = [
@@ -124,61 +141,35 @@ markets = [
     ("data11_sterlin_usd.txt", "GBP=X")
 ]
 
-
 # ------------------------------------------------
-# ÇALIŞTIR
+# MAIN
 # ------------------------------------------------
 
 if __name__ == "__main__":
 
     start_time = datetime.now()
-    print(f"🚀 Yahoo Güncelleme Başladı: {start_time.strftime('%H:%M:%S')}")
+    print(f"🚀 START: {start_time.strftime('%H:%M:%S')}")
 
     for file_path, symbol in markets:
+
         update_index(file_path, symbol)
 
+        # 🧠 anti-block delay
+        time.sleep(random.uniform(2, 5))
+
+    # FTP upload
+    print("\n📡 Uploading files...")
+
+    for file_path, _ in markets:
+        upload_to_ftp(file_path)
+
     end_time = datetime.now()
-    print(f"\n✨ Tüm işlemler tamamlandı. Süre: {end_time - start_time}")
 
-# --- CONFIGURATION (GoDaddy FTP Bilgileri) ---
-FTP_HOST = "92.205.148.23"
-FTP_USER = "testftp@trendmadeni.com"
-FTP_PASS = "9Nes1948..?"
-FTP_PATH = ""
-
-def godaddy_yukle(dosya_adi):
-    """Güncellenen dosyayı FTP üzerinden GoDaddy sunucusuna yükler."""
-    try:
-        with FTP() as ftp:
-            ftp.connect(FTP_HOST, 21, timeout=30)
-            ftp.login(user=FTP_USER, passwd=FTP_PASS)
-            
-            # GoDaddy için Pasif Modu aktif et
-            ftp.set_pasv(True)
-            
-            # Eğer FTP_PATH doluysa o klasöre git, boşsa kök dizinde kal
-            if FTP_PATH:
-                ftp.cwd(FTP_PATH)
-            
-            with open(dosya_adi, 'rb') as f:
-                ftp.storbinary(f"STOR {dosya_adi}", f)
-            print(f"🚀 {dosya_adi} başarıyla GoDaddy'ye yüklendi.")
-    except Exception as e:
-        print(f"❌ FTP Hatası ({dosya_adi}): {e}")
-
-godaddy_yukle("data2_BIST100.txt")
-godaddy_yukle("data7_dowjones.txt")
-godaddy_yukle("data8_SP500.txt")
-godaddy_yukle("data9_Nikkei225.txt")
-godaddy_yukle("data10_DAX.txt")
-godaddy_yukle("data11_FTSE100.txt")
-godaddy_yukle("data13_thy.txt")
-
-print("\n" + "="*40)
-print("📝 YATIRIM DATA UPDATE LOG")
-print("="*40)
-print(f"🕒 Bitiş Zamanı : {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
-print(f"⏱ Süre         : {end_time - start_time}")
-print("="*40 + "\n")
+    print("\n" + "=" * 40)
+    print("📝 UPDATE LOG")
+    print("=" * 40)
+    print(f"🕒 End: {end_time.strftime('%d/%m/%Y %H:%M:%S')}")
+    print(f"⏱ Duration: {end_time - start_time}")
+    print("=" * 40)
 
 
